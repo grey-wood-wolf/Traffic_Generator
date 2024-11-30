@@ -13,9 +13,10 @@ import struct
 INF = float('inf')
 
 class FlowGenerator:
-    def __init__(self, host, port, duration=None, total_size=None, packet_size=None, bandwidth=None,
+    def __init__(self, host, port, mode, duration=None, total_size=None, packet_size=None, bandwidth=None,
                  interval=1, distributed_packets_per_second=None, distributed_packet_size=None,
                  distributed_bandwidth=None, bandwidth_reset_interval=None, json=False, one_test=False):
+        self.mode = mode
         self.host = host
         self.port = port
         self.duration = duration
@@ -98,11 +99,12 @@ class FlowGenerator:
         last_bytes = 0
         last_packets = 0
         last_time = self.start_time
-        start_time = time.time()
+        start_time = self.start_time
+        self.retr = 0
 
         while True:
             current_time = time.time()
-            time.sleep(0.01)
+            time.sleep(0.005)
             if current_time - last_time > self.interval or not self.is_running:
                 interval_time = current_time - last_time
                 begin_time = last_time - start_time
@@ -123,19 +125,45 @@ class FlowGenerator:
                     'total_bytes': self.total_sent,
                     'total_packets': self.total_packets
                 }
+
+                if self.type == 'tcp' and self.mode == 'client':
+                    fmt = "B"*7 + "I"*24
+                    info = self.socket.getsockopt(socket.IPPROTO_TCP, socket.TCP_INFO, 104)
+                    x = struct.unpack(fmt, info)
+                    
+                    mss = x[26]      # advmss字段
+                    cwnd = x[25]     # snd_cwnd字段
+                    cwnd = cwnd * mss if cwnd > 0 else 0  # cwnd(字节)
+                    retr = x[14] - self.retr  # retrans重传计数
+                    self.retr = x[14]
+                    rtt = x[22]      # rtt (微秒)
+
+                    interval_stats.update({
+                        'cwnd': cwnd,    # cwnd(字节)
+                        'retr': retr,    # 重传次数
+                        'rtt': rtt,      # RTT(微秒)
+                    })
+
                 self.interval_data.append(interval_stats)
                 
-                print(f"[{end_time:.2f}-{begin_time:.2f} s]  "
-                    f"Interval: {bytes_diff/(1024*1024):.2f} MB  "
-                    f"Bandwidth: {current_bandwidth:.2f} Mbps  "
-                    f"Packets: {packets_diff}  "
-                    f"PPS: {current_pps:.2f}")
+                if self.type == 'tcp' and self.mode == 'client':
+                    print(f"[{end_time:.2f}-{begin_time:.2f} s]  "
+                        f"Transfer: {bytes_diff/(1024*1024):.2f} MB  "
+                        f"Bandwidth: {current_bandwidth:.2f} Mbps  "
+                        f"Cwnd: {cwnd}  "
+                        f"Retr: {retr}  "
+                        f"RTT: {rtt:.2f}  ")
+                else:
+                    print(f"[{end_time:.2f}-{begin_time:.2f} s]  "
+                        f"Transfer: {bytes_diff/(1024*1024):.2f} MB  "
+                        f"Bandwidth: {current_bandwidth:.2f} Mbps  ")
                 
                 last_bytes = self.total_sent
                 last_packets = self.total_packets
-                last_time = current_time
+                last_time = last_time + self.interval
             if not self.is_running:
                 break
+
     def print_summary(self):
         """打印测试总结"""
         if not self.interval_data:
@@ -143,24 +171,26 @@ class FlowGenerator:
         
         test_duration = self.test_end_time - self.test_start_time
         avg_bandwidth = (self.total_sent * 8) / (test_duration * 1000 * 1000) if self.total_sent > 0 else 0
-        avg_pps = self.total_packets / test_duration if self.total_packets > 0 else 0
-        
+            
         print("\n=== Test Summary ===")
         print(f"Duration: {test_duration:.2f} seconds")
         print(f"Total Data: {self.total_sent/(1024*1024):.2f} MB")
-        print(f"Total Packets: {self.total_packets}")
         print(f"Average Bandwidth: {avg_bandwidth:.2f} Mbps")
-        print(f"Average PPS: {avg_pps:.2f}")
+        if self.type == 'tcp' and self.mode == 'client':
+            print(f"Max_cwnd: {max([x['cwnd'] for x in self.interval_data])} bytes")
+            print(f"Mean_RTT: {np.mean([x['rtt'] for x in self.interval_data]):.2f}") 
+            print(f"Retransmissions: {self.retr}")
         
 class TCPFlowGenerator(FlowGenerator):
-    def __init__(self, host, port, duration=None, total_size=None, packet_size=None, bandwidth=None,
+    def __init__(self, host, port, mode, duration=None, total_size=None, packet_size=None, bandwidth=None,
                     interval=1, distributed_packets_per_second=None, distributed_packet_size=None,
                     distributed_bandwidth=None, bandwidth_reset_interval=None, json=False, one_test=False):
         if packet_size is None:
             packet_size = 64000
-        super().__init__(host, port, duration, total_size, packet_size, bandwidth, interval,
+        super().__init__(host, port, mode, duration, total_size, packet_size, bandwidth, interval,
                         distributed_packets_per_second, distributed_packet_size, distributed_bandwidth,
                         bandwidth_reset_interval, json, one_test)
+        self.type = 'tcp'
 
     def run_server(self):
         try:
@@ -305,16 +335,17 @@ class UDPPacket:
         return UDPPacket(seq_no, timestamp, total_sent_packets, data[16:])
 
 class UDPFlowGenerator(FlowGenerator):
-    def __init__(self, host, port, duration=None, total_size=None, packet_size=None, bandwidth=None,
+    def __init__(self, host, port, mode, duration=None, total_size=None, packet_size=None, bandwidth=None,
                  interval=1, distributed_packets_per_second=None, distributed_packet_size=None,
                  distributed_bandwidth=None, bandwidth_reset_interval=None, json=False, one_test=False):
         if bandwidth is None:
             bandwidth = "1M"
         if packet_size is None:
             packet_size = 1450
-        super().__init__(host, port, duration, total_size, packet_size, bandwidth, interval,
+        super().__init__(host, port, mode, duration, total_size, packet_size, bandwidth, interval,
                          distributed_packets_per_second, distributed_packet_size, distributed_bandwidth,
                          bandwidth_reset_interval, json, one_test)
+        self.type = 'udp'
         self.received_packets = {}  # 记录收到的包序列号
         self.expected_seq_no = 0    # 期望的下一个序列号
         self.duplicates = 0         # 重复包数量
@@ -528,18 +559,27 @@ def main():
     if args.time is not None and args.size is not None:
         print("Error: Cannot specify both time and size")
         sys.exit(1)
+    if args.time is None and args.size is None and not args.server:
+        print("Error: Must specify either time or size")
+        sys.exit(1)
+    if args.server is None and args.client is None:
+        print("Error: Must specify either server or client")
+        sys.exit(1)
+    if args.server and args.client:
+        print("Error: Cannot specify both server and client")
+        sys.exit(1)
 
     # 选择Generator类
     GeneratorClass = UDPFlowGenerator if args.udp else TCPFlowGenerator
     if args.server:
-        generator = GeneratorClass('0.0.0.0', args.port, args.time, args.size, 
+        generator = GeneratorClass('0.0.0.0', args.port, "server", args.time, args.size, 
                                args.packet_size, args.bandwidth, args.interval,
                                args.distributed_packets_per_second, args.distributed_packet_size,
                                args.distributed_bandwidth, args.bandwidth_reset_interval,
                                args.json, args.one_test)
         generator.run_server()
     elif args.client:
-        generator = GeneratorClass(args.client, args.port, args.time, args.size,
+        generator = GeneratorClass(args.client, args.port, "client", args.time, args.size,
                                args.packet_size, args.bandwidth, args.interval,
                                args.distributed_packets_per_second, args.distributed_packet_size,
                                args.distributed_bandwidth, args.bandwidth_reset_interval,
