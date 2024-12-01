@@ -32,6 +32,8 @@ class FlowGenerator:
         self.start_time = None
         self.socket = None
         self.stats_thread = None
+        self.json = json
+        self.one_test = one_test
         
         # 存储统计数据
         self.interval_data = []

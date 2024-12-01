@@ -112,6 +112,9 @@ class UDPFlowGenerator(FlowGenerator):
                 
                 if self.total_sent > 0:
                     self.print_summary()
+                
+                if self.one_test:
+                    break
 
         except Exception as e:
             print(f"Server error: {e}")
