@@ -2,6 +2,7 @@ import socket
 import time
 import numpy as np
 import struct
+import json
 
 # 定义无穷
 INF = float('inf')
@@ -100,6 +101,7 @@ class FlowGenerator:
         self.retr = 0
         last_max_seq_no = 0
         last_jitters = 0
+        self.json_info = {"intervals":[], "end":{}}
 
         while True:
             current_time = time.time()
@@ -157,33 +159,35 @@ class FlowGenerator:
 
 
                 self.interval_data.append(interval_stats)
-                
-                if self.type == 'tcp' and self.mode == 'client':
-                    print(f"[{end_time:.2f}-{begin_time:.2f} s]  "
-                        f"Transfer: {bytes_diff/(1024*1024):.2f} MB  "
-                        f"Bandwidth: {current_bandwidth:.2f} Mbps  "
-                        f"Cwnd: {cwnd}  "
-                        f"Retr: {retr}  "
-                        f"RTT: {rtt:.2f}  ")
-                elif self.type == 'tcp' and self.mode == 'server':
-                    print(f"[{end_time:.2f}-{begin_time:.2f} s]  "
-                        f"Received: {bytes_diff/(1024*1024):.2f} MB  "
-                        f"Bandwidth: {current_bandwidth:.2f} Mbps  ")
-                elif self.type == 'udp' and self.mode == 'client':
-                    print(f"[{end_time:.2f}-{begin_time:.2f} s]  "
-                        f"Transfer: {bytes_diff/(1024*1024):.2f} MB  "
-                        f"Bandwidth: {current_bandwidth:.2f} Mbps  "
-                        f"Total Datagrams: {packets_diff}  ")
-                elif self.type == 'udp' and self.mode == 'server':
-                    print(f"[{end_time:.2f}-{begin_time:.2f} s]  "
-                        f"Transfer: {bytes_diff/(1024*1024):.2f} MB  "
-                        f"Bitrate: {current_bandwidth:.2f} Mbps  "
-                        f"Jitters: {avg_jitter:.3f} ms  "
-                        f"Lost/Total Datagrams: {lost_packets}/{real_sent_packets_diff} ({lost_percent:.0f}%)  ")
+                if self.json:
+                    self.json_info["intervals"].append(interval_stats)
                 else:
-                    print(f"[{end_time:.2f}-{begin_time:.2f} s]  "
-                        f"Transfer: {bytes_diff/(1024*1024):.2f} MB  "
-                        f"Bandwidth: {current_bandwidth:.2f} Mbps  ")
+                    if self.type == 'tcp' and self.mode == 'client':
+                        print(f"[{end_time:.2f}-{begin_time:.2f} s]  "
+                            f"Transfer: {bytes_diff/(1024*1024):.2f} MB  "
+                            f"Bandwidth: {current_bandwidth:.2f} Mbps  "
+                            f"Cwnd: {cwnd}  "
+                            f"Retr: {retr}  "
+                            f"RTT: {rtt:.2f}  ")
+                    elif self.type == 'tcp' and self.mode == 'server':
+                        print(f"[{end_time:.2f}-{begin_time:.2f} s]  "
+                            f"Received: {bytes_diff/(1024*1024):.2f} MB  "
+                            f"Bandwidth: {current_bandwidth:.2f} Mbps  ")
+                    elif self.type == 'udp' and self.mode == 'client':
+                        print(f"[{end_time:.2f}-{begin_time:.2f} s]  "
+                            f"Transfer: {bytes_diff/(1024*1024):.2f} MB  "
+                            f"Bandwidth: {current_bandwidth:.2f} Mbps  "
+                            f"Total Datagrams: {packets_diff}  ")
+                    elif self.type == 'udp' and self.mode == 'server':
+                        print(f"[{end_time:.2f}-{begin_time:.2f} s]  "
+                            f"Transfer: {bytes_diff/(1024*1024):.2f} MB  "
+                            f"Bitrate: {current_bandwidth:.2f} Mbps  "
+                            f"Jitters: {avg_jitter:.3f} ms  "
+                            f"Lost/Total Datagrams: {lost_packets}/{real_sent_packets_diff} ({lost_percent:.0f}%)  ")
+                    else:
+                        print(f"[{end_time:.2f}-{begin_time:.2f} s]  "
+                            f"Transfer: {bytes_diff/(1024*1024):.2f} MB  "
+                            f"Bandwidth: {current_bandwidth:.2f} Mbps  ")
                 
                 last_bytes = last_bytes + bytes_diff
                 last_packets = last_packets + packets_diff
@@ -201,20 +205,47 @@ class FlowGenerator:
         
         test_duration = self.test_end_time - self.test_start_time
         avg_bandwidth = (self.total_sent * 8) / (test_duration * 1000 * 1000) if self.total_sent > 0 else 0
-            
-        print("\n=== Test Summary ===")
-        print(f"Duration: {test_duration:.2f} seconds")
-        print(f"Total Data: {self.total_sent/(1024*1024):.2f} MB")
-        print(f"Average Bandwidth: {avg_bandwidth:.2f} Mbps")
+        
+        if self.json:
+            sum_info = {"start": self.test_start_time, 
+                        "end": self.test_end_time, 
+                        "seconds": test_duration,
+                        "bytes": self.total_sent,
+                        "bits_per_second": avg_bandwidth * 1000000,
+                    }
+        else:
+            print("\n=== Test Summary ===")
+            print(f"Duration: {test_duration:.2f} seconds")
+            print(f"Total Data: {self.total_sent/(1024*1024):.2f} MB")
+            print(f"Average Bandwidth: {avg_bandwidth:.2f} Mbps")
         if self.type == 'tcp' and self.mode == 'client':
-            print(f"Max_cwnd: {max([x['cwnd'] for x in self.interval_data])} bytes")
-            print(f"Mean_RTT: {np.mean([x['rtt'] for x in self.interval_data]):.2f}") 
-            print(f"Retransmissions: {self.retr}")
+            if self.json:
+                sum_info["max_snd_cwnd"] = max([x['cwnd'] for x in self.interval_data])
+                sum_info["mean_rtt"] = np.mean([x['rtt'] for x in self.interval_data])
+                sum_info["retransmits"] = self.retr
+            else:
+                print(f"Max_cwnd: {max([x['cwnd'] for x in self.interval_data])} bytes")
+                print(f"Mean_RTT: {np.mean([x['rtt'] for x in self.interval_data]):.2f}") 
+                print(f"Retransmissions: {self.retr}")
         elif self.type == 'udp' and self.mode == 'server':
             lost_packets = self.total_sent_packets - self.total_packets
             avg_jitter = self.total_jitters / self.total_packets if self.total_packets > 0 else 0
-            print("Jitters: {:.3f} ms".format(avg_jitter))
-            print(f"Lost/Total Datagrams: {lost_packets}/{self.total_sent_packets} ({lost_packets/self.total_sent_packets*100:.0f}%)")
+            if self.json:
+                sum_info["lost_packets"] = lost_packets
+                sum_info["lost_percent"] = 100 * (lost_packets / self.total_sent_packets)
+                sum_info["jitter_ms"] = avg_jitter
+            else:
+                print("Jitters: {:.3f} ms".format(avg_jitter))
+                print(f"Lost/Total Datagrams: {lost_packets}/{self.total_sent_packets} ({lost_packets/self.total_sent_packets*100:.0f}%)")
         elif self.type == 'udp' and self.mode == 'client':
             lost_packets = self.total_packets - self.total_received_packets
-            print(f"Lost/Total Datagrams: {lost_packets}/{self.total_packets} ({lost_packets/self.total_packets*100:.0f}%)")
+            if self.json:
+                sum_info["lost_packets"] = lost_packets
+                sum_info["lost_percent"] = 100 * (lost_packets / self.total_packets)
+            else:
+                print(f"Lost/Total Datagrams: {lost_packets}/{self.total_packets} ({lost_packets/self.total_packets*100:.0f}%)")
+
+        if self.json:
+            self.json_info["end"] = sum_info
+            print(json.dumps(self.json_info, indent=4))
+        self.json_info = {}
