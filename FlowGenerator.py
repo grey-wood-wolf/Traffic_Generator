@@ -27,6 +27,7 @@ class FlowGenerator:
         
         self.total_sent = 0
         self.total_packets = 0
+        self.max_seq_no = 0
         self.is_running = False
         self.start_time = None
         self.socket = None
@@ -95,6 +96,8 @@ class FlowGenerator:
         last_time = self.start_time
         start_time = self.start_time
         self.retr = 0
+        last_max_seq_no = 0
+        last_jitters = 0
 
         while True:
             current_time = time.time()
@@ -108,6 +111,9 @@ class FlowGenerator:
                 packets_diff = self.total_packets - last_packets
                 current_bandwidth = (bytes_diff * 8) / (interval_time * 1000 * 1000)  # Mbps
                 current_pps = packets_diff / interval_time
+                if self.type == 'udp' and self.mode == 'server':
+                    jitters_diff = self.total_jitters - last_jitters
+                    real_sent_packets_diff = self.max_seq_no - last_max_seq_no
                 
                 # 记录统计数据
                 interval_stats = {
@@ -137,6 +143,16 @@ class FlowGenerator:
                         'retr': retr,    # 重传次数
                         'rtt': rtt,      # RTT(微秒)
                     })
+                elif self.type == 'udp' and self.mode == 'server':
+                    lost_packets = real_sent_packets_diff - packets_diff
+                    lost_percent = 100 * (lost_packets / real_sent_packets_diff if real_sent_packets_diff > 0 else 0)
+                    avg_jitter = jitters_diff / packets_diff if packets_diff > 0 else 0
+                    interval_stats.update({
+                        'lost_packets': lost_packets,  # 丢包数
+                        'lost_percent': lost_percent,  # 丢包率
+                        'jitter_ms': avg_jitter,    # 平均抖动
+                    })
+
 
                 self.interval_data.append(interval_stats)
                 
@@ -147,14 +163,32 @@ class FlowGenerator:
                         f"Cwnd: {cwnd}  "
                         f"Retr: {retr}  "
                         f"RTT: {rtt:.2f}  ")
+                elif self.type == 'tcp' and self.mode == 'server':
+                    print(f"[{end_time:.2f}-{begin_time:.2f} s]  "
+                        f"Received: {bytes_diff/(1024*1024):.2f} MB  "
+                        f"Bandwidth: {current_bandwidth:.2f} Mbps  ")
+                elif self.type == 'udp' and self.mode == 'client':
+                    print(f"[{end_time:.2f}-{begin_time:.2f} s]  "
+                        f"Transfer: {bytes_diff/(1024*1024):.2f} MB  "
+                        f"Bandwidth: {current_bandwidth:.2f} Mbps  "
+                        f"Total Datagrams: {packets_diff}  ")
+                elif self.type == 'udp' and self.mode == 'server':
+                    print(f"[{end_time:.2f}-{begin_time:.2f} s]  "
+                        f"Transfer: {bytes_diff/(1024*1024):.2f} MB  "
+                        f"Bitrate: {current_bandwidth:.2f} Mbps  "
+                        f"Jitters: {avg_jitter:.3f} ms  "
+                        f"Lost/Total Datagrams: {lost_packets}/{real_sent_packets_diff} ({lost_percent:.0f}%)  ")
                 else:
                     print(f"[{end_time:.2f}-{begin_time:.2f} s]  "
                         f"Transfer: {bytes_diff/(1024*1024):.2f} MB  "
                         f"Bandwidth: {current_bandwidth:.2f} Mbps  ")
                 
-                last_bytes = self.total_sent
-                last_packets = self.total_packets
+                last_bytes = last_bytes + bytes_diff
+                last_packets = last_packets + packets_diff
                 last_time = last_time + self.interval
+                if self.type == 'udp' and self.mode == 'server':
+                    last_jitters = last_jitters + jitters_diff
+                    last_max_seq_no = last_max_seq_no + real_sent_packets_diff
             if not self.is_running:
                 break
 
@@ -174,3 +208,11 @@ class FlowGenerator:
             print(f"Max_cwnd: {max([x['cwnd'] for x in self.interval_data])} bytes")
             print(f"Mean_RTT: {np.mean([x['rtt'] for x in self.interval_data]):.2f}") 
             print(f"Retransmissions: {self.retr}")
+        elif self.type == 'udp' and self.mode == 'server':
+            lost_packets = self.total_sent_packets - self.total_packets
+            avg_jitter = self.total_jitters / self.total_packets if self.total_packets > 0 else 0
+            print("Jitters: {:.3f} ms".format(avg_jitter))
+            print(f"Lost/Total Datagrams: {lost_packets}/{self.total_sent_packets} ({lost_packets/self.total_sent_packets*100:.0f}%)")
+        elif self.type == 'udp' and self.mode == 'client':
+            lost_packets = self.total_packets - self.total_received_packets
+            print(f"Lost/Total Datagrams: {lost_packets}/{self.total_packets} ({lost_packets/self.total_packets*100:.0f}%)")

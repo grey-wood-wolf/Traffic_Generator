@@ -13,21 +13,21 @@ class UDPPacket:
     TYPE_FIN = 0xFFFFFFFF  # 结束包
     TYPE_FIN_ACK = 0xFFFFFFFE  # 结束确认包
 
-    def __init__(self, seq_no, timestamp, total_sent_packets=0, data=b''):
+    def __init__(self, seq_no, timestamp, total_packets=0, data=b''):
         self.seq_no = seq_no
         self.timestamp = timestamp
-        self.total_sent_packets = total_sent_packets
+        self.total_packets = total_packets
         self.data = data
         
     def to_bytes(self):
-        header = struct.pack('!IQI', self.seq_no, self.timestamp, self.total_sent_packets)
+        header = struct.pack('!IQI', self.seq_no, self.timestamp, self.total_packets)
         return header + self.data
         
     @staticmethod
     def from_bytes(data):
         header = data[:16]  # 4+8+4=16字节的包头
-        seq_no, timestamp, total_sent_packets = struct.unpack('!IQI', header)
-        return UDPPacket(seq_no, timestamp, total_sent_packets, data[16:])
+        seq_no, timestamp, total_packets = struct.unpack('!IQI', header)
+        return UDPPacket(seq_no, timestamp, total_packets, data[16:])
 
 class UDPFlowGenerator(FlowGenerator):
     def __init__(self, host, port, mode, duration=None, total_size=None, packet_size=None, bandwidth=None,
@@ -41,9 +41,6 @@ class UDPFlowGenerator(FlowGenerator):
                          distributed_packets_per_second, distributed_packet_size, distributed_bandwidth,
                          bandwidth_reset_interval, json, one_test)
         self.type = 'udp'
-        self.received_packets = {}  # 记录收到的包序列号
-        self.expected_seq_no = 0    # 期望的下一个序列号
-        self.duplicates = 0         # 重复包数量
         
     def create_test_data(self, seq_no):
         payload_size = self.packet_size - 16  # 减去包头大小
@@ -70,10 +67,11 @@ class UDPFlowGenerator(FlowGenerator):
                         break
                 
                 print("Client connected, starting test...")
-                self.received_packets.clear()
-                self.duplicates = 0
+                self.received_packets_seq_no = set()
                 self.total_sent = 0
                 self.total_packets = 0
+                self.max_seq_no = 0         # 最大的包序列号
+                self.total_jitters = 0       # 总抖动
                 
                 self.is_running = True
                 self.test_start_time = self.start_time = time.time()
@@ -82,7 +80,8 @@ class UDPFlowGenerator(FlowGenerator):
                 self.stats_thread.daemon = True
                 self.stats_thread.start()
                 
-                total_sent_packets = 0
+                self.total_sent_packets = 0
+                last_transit = 0
                 
                 while self.is_running:
                     try:
@@ -90,18 +89,17 @@ class UDPFlowGenerator(FlowGenerator):
                         packet = UDPPacket.from_bytes(data)
                         
                         if packet.seq_no == UDPPacket.TYPE_FIN:
-                            total_sent_packets = packet.total_sent_packets
-                            ack_packet = UDPPacket(UDPPacket.TYPE_FIN_ACK, int(time.time() * 1000000))
+                            self.total_sent_packets = packet.total_packets
+                            ack_packet = UDPPacket(UDPPacket.TYPE_FIN_ACK, int(time.time() * 1000000), self.total_packets)
                             server_socket.sendto(ack_packet.to_bytes(), addr)
                             break
                             
-                        if packet.seq_no in self.received_packets:
-                            self.duplicates += 1
-                        else:
-                            self.received_packets[packet.seq_no] = packet
-                        
+                        self.max_seq_no = max(self.max_seq_no, packet.seq_no)
                         self.total_sent += len(data)
                         self.total_packets += 1
+                        transit = (time.time() - packet.timestamp / 1000000) * 1000 # 单位ms
+                        self.total_jitters += abs(transit - last_transit)
+                        last_transit = transit
 
                     except Exception as e:
                         print(f"Error receiving data: {e}")
@@ -111,17 +109,6 @@ class UDPFlowGenerator(FlowGenerator):
                 self.test_end_time = time.time()
                 if self.stats_thread:
                     self.stats_thread.join()
-                
-                if total_sent_packets > 0:
-                    lost_packets = total_sent_packets - len(self.received_packets)
-                    loss_rate = (lost_packets / total_sent_packets * 100)
-                    
-                    print(f"\nFinal Statistics:")
-                    print(f"Total Sent Packets: {total_sent_packets}")
-                    print(f"Received Packets: {len(self.received_packets)}")
-                    print(f"Lost Packets: {lost_packets}")
-                    print(f"Loss Rate: {loss_rate:.2f}%")
-                    print(f"Duplicates: {self.duplicates}")
                 
                 if self.total_sent > 0:
                     self.print_summary()
@@ -164,7 +151,7 @@ class UDPFlowGenerator(FlowGenerator):
             self.stats_thread.start()
 
             self.reset_bandwidth()
-            seq_no = 0
+            seq_no = 1
 
             if self.pps:
                 next_send_time = time.time()
@@ -213,6 +200,7 @@ class UDPFlowGenerator(FlowGenerator):
                     data, _ = self.socket.recvfrom(65535)
                     packet = UDPPacket.from_bytes(data)
                     if packet.seq_no == UDPPacket.TYPE_FIN_ACK:
+                        self.total_received_packets = packet.total_packets
                         break
                 except socket.timeout:
                     continue
