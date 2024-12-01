@@ -123,7 +123,7 @@ class FlowGenerator:
                 interval_stats = {
                     'times': f'{end_time:.2f}-{begin_time:.2f}', 
                     'bytes': bytes_diff,
-                    'bandwidth_mbps': current_bandwidth,
+                    'bandwidth': current_bandwidth * 1000000,
                     'packets': packets_diff,
                     'pps': current_pps,
                     'total_bytes': self.total_sent,
