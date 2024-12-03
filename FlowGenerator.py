@@ -8,9 +8,10 @@ import json
 INF = float('inf')
 
 class FlowGenerator:
-    def __init__(self, host, port, mode, duration=None, total_size=None, packet_size=None, bandwidth=None,
+    def __init__(self, bind_address, host, port, mode, duration=None, total_size=None, packet_size=None, bandwidth=None,
                  interval=1, distributed_packets_per_second=None, distributed_packet_size=None,
                  distributed_bandwidth=None, bandwidth_reset_interval=None, json=False, one_test=False):
+        self.bind_address = bind_address
         self.mode = mode
         self.host = host
         self.port = port

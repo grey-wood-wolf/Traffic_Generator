@@ -5,23 +5,25 @@ import threading
 from FlowGenerator import FlowGenerator
 
 class TCPFlowGenerator(FlowGenerator):
-    def __init__(self, host, port, mode, duration=None, total_size=None, packet_size=None, bandwidth=None,
+    def __init__(self, bind_address, host, port, mode, duration=None, total_size=None, packet_size=None, bandwidth=None,
                     interval=1, distributed_packets_per_second=None, distributed_packet_size=None,
                     distributed_bandwidth=None, bandwidth_reset_interval=None, json=False, one_test=False):
         if packet_size is None:
             packet_size = 64000
-        super().__init__(host, port, mode, duration, total_size, packet_size, bandwidth, interval,
+        super().__init__(bind_address, host, port, mode, duration, total_size, packet_size, bandwidth, interval,
                         distributed_packets_per_second, distributed_packet_size, distributed_bandwidth,
                         bandwidth_reset_interval, json, one_test)
         self.type = 'tcp'
 
     def run_server(self):
         try:
+            if not self.bind_address:
+                self.bind_address = '0.0.0.0'
             server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            server_socket.bind((self.host, self.port))
+            server_socket.bind((self.bind_address, self.port))
             server_socket.listen(1)
-            print(f"TCP Server listening on {self.host}:{self.port}")
+            print(f"TCP Server listening on {self.bind_address}:{self.port}")
 
             while True:
                 client_socket, address = server_socket.accept()
@@ -69,6 +71,8 @@ class TCPFlowGenerator(FlowGenerator):
     def run_client(self):
         try:
             self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            if self.bind_address:
+                self.socket.bind((self.bind_address, 0))
             self.socket.connect((self.host, self.port))
             
             self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 0)

@@ -32,14 +32,14 @@ class UDPPacket:
         return UDPPacket(seq_no, timestamp, total_packets, data[16:])
 
 class UDPFlowGenerator(FlowGenerator):
-    def __init__(self, host, port, mode, duration=None, total_size=None, packet_size=None, bandwidth=None,
+    def __init__(self, bind_address, host, port, mode, duration=None, total_size=None, packet_size=None, bandwidth=None,
                  interval=1, distributed_packets_per_second=None, distributed_packet_size=None,
                  distributed_bandwidth=None, bandwidth_reset_interval=None, json=False, one_test=False):
         if bandwidth is None:
             bandwidth = "1M"
         if packet_size is None:
             packet_size = 1450
-        super().__init__(host, port, mode, duration, total_size, packet_size, bandwidth, interval,
+        super().__init__(bind_address, host, port, mode, duration, total_size, packet_size, bandwidth, interval,
                          distributed_packets_per_second, distributed_packet_size, distributed_bandwidth,  
                          bandwidth_reset_interval, json, one_test)
         self.type = 'udp'
@@ -52,9 +52,11 @@ class UDPFlowGenerator(FlowGenerator):
 
     def run_server(self):
         try:
+            if not self.bind_address:
+                self.bind_address = '0.0.0.0'
             server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            server_socket.bind((self.host, self.port))
-            print(f"UDP Server listening on {self.host}:{self.port}")
+            server_socket.bind((self.bind_address, self.port))
+            print(f"UDP Server listening on {self.bind_address}:{self.port}")
 
             while True:
                 # 等待客户端发起连接
@@ -158,6 +160,8 @@ class UDPFlowGenerator(FlowGenerator):
     def run_client(self):
         try:
             self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            if self.bind_address:
+                self.socket.bind((self.bind_address, 0))
             print(f"UDP Client connecting to {self.host}:{self.port}")
             
             # 发送建立连接请求

@@ -21,6 +21,7 @@ def main():
     parser.add_argument('-bri','--bandwidth_reset_interval', type=float, help='Bandwidth reset interval in seconds')
     parser.add_argument('-J', '--json', action='store_true', help='Print statistics as JSON file')
     parser.add_argument('-1', '--one_test', action='store_true', help='Run only one test')
+    parser.add_argument('-B', '--bind_address', type=str, help='Bind address for server')
 
     args = parser.parse_args()
 
@@ -40,14 +41,14 @@ def main():
     # 选择Generator类
     GeneratorClass = UDPFlowGenerator if args.udp else TCPFlowGenerator
     if args.server:
-        generator = GeneratorClass('0.0.0.0', args.port, "server", args.time, args.size, 
+        generator = GeneratorClass(args.bind_address, args.client, args.port, "server", args.time, args.size, 
                                args.packet_size, args.bandwidth, args.interval,
                                args.distributed_packets_per_second, args.distributed_packet_size,
                                args.distributed_bandwidth, args.bandwidth_reset_interval,
                                args.json, args.one_test)
         generator.run_server()
     elif args.client:
-        generator = GeneratorClass(args.client, args.port, "client", args.time, args.size,
+        generator = GeneratorClass(args.bind_address, args.client, args.port, "client", args.time, args.size,
                                args.packet_size, args.bandwidth, args.interval,
                                args.distributed_packets_per_second, args.distributed_packet_size,
                                args.distributed_bandwidth, args.bandwidth_reset_interval,
