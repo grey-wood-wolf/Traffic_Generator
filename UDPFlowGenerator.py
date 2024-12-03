@@ -8,14 +8,16 @@ from FlowGenerator import FlowGenerator
 class UDPPacket:
     # 添加包类型常量
     TYPE_INIT = 0xFFFFFFF0  # 建立连接请求
-    TYPE_INIT_ACK = 0xFFFFFFF1  # 建立连接确认
+    TYPE_INIT_ACK = 0xFFFFFFF1  # 建立连接确认  
     TYPE_DATA = 0x0  # 普通数据包
     TYPE_FIN = 0xFFFFFFFF  # 结束包
     TYPE_FIN_ACK = 0xFFFFFFFE  # 结束确认包
+    TYPE_FORCE_QUIT = 0xFFFFFFF2  # 强制退出类型
+    TYPE_FORCE_QUIT_ACK = 0xFFFFFFF3  # 强制退出确认类型
 
     def __init__(self, seq_no, timestamp, total_packets=0, data=b''):
         self.seq_no = seq_no
-        self.timestamp = timestamp
+        self.timestamp = timestamp 
         self.total_packets = total_packets
         self.data = data
         
@@ -23,7 +25,7 @@ class UDPPacket:
         header = struct.pack('!IQI', self.seq_no, self.timestamp, self.total_packets)
         return header + self.data
         
-    @staticmethod
+    @staticmethod 
     def from_bytes(data):
         header = data[:16]  # 4+8+4=16字节的包头
         seq_no, timestamp, total_packets = struct.unpack('!IQI', header)
@@ -38,7 +40,7 @@ class UDPFlowGenerator(FlowGenerator):
         if packet_size is None:
             packet_size = 1450
         super().__init__(host, port, mode, duration, total_size, packet_size, bandwidth, interval,
-                         distributed_packets_per_second, distributed_packet_size, distributed_bandwidth,
+                         distributed_packets_per_second, distributed_packet_size, distributed_bandwidth,  
                          bandwidth_reset_interval, json, one_test)
         self.type = 'udp'
         
@@ -71,7 +73,7 @@ class UDPFlowGenerator(FlowGenerator):
                 self.total_sent = 0
                 self.total_packets = 0
                 self.max_seq_no = 0         # 最大的包序列号
-                self.total_jitters = 0       # 总抖动
+                self.total_jitters = 0      # 总抖动
                 
                 self.is_running = True
                 self.test_start_time = self.start_time = time.time()
@@ -80,30 +82,59 @@ class UDPFlowGenerator(FlowGenerator):
                 self.stats_thread.daemon = True
                 self.stats_thread.start()
                 
+                self.total_received_packets = 0
                 self.total_sent_packets = 0
+                self.forced_quit = False
                 last_transit = 0
                 
-                while self.is_running:
-                    try:
-                        data, addr = server_socket.recvfrom(65535)
-                        packet = UDPPacket.from_bytes(data)
-                        
-                        if packet.seq_no == UDPPacket.TYPE_FIN:
-                            self.total_sent_packets = packet.total_packets
-                            ack_packet = UDPPacket(UDPPacket.TYPE_FIN_ACK, int(time.time() * 1000000), self.total_packets)
-                            server_socket.sendto(ack_packet.to_bytes(), addr)
-                            break
-                            
-                        self.max_seq_no = max(self.max_seq_no, packet.seq_no)
-                        self.total_sent += len(data)
-                        self.total_packets += 1
-                        transit = (time.time() - packet.timestamp / 1000000) * 1000 # 单位ms
-                        self.total_jitters += abs(transit - last_transit)
-                        last_transit = transit
+                try:
+                    while self.is_running:
+                        try:
+                            data, addr = server_socket.recvfrom(65535)
+                            packet = UDPPacket.from_bytes(data)
 
-                    except Exception as e:
-                        print(f"Error receiving data: {e}")
-                        break
+                            if packet.seq_no == UDPPacket.TYPE_FORCE_QUIT:
+                                self.total_sent_packets = packet.total_packets
+                                # 发送确认
+                                ack_packet = UDPPacket(UDPPacket.TYPE_FORCE_QUIT_ACK, int(time.time() * 1000000), self.total_packets)
+                                server_socket.sendto(ack_packet.to_bytes(), addr)
+                                self.is_running = False
+                                break
+                            
+                            if packet.seq_no == UDPPacket.TYPE_FIN:
+                                self.total_sent_packets = packet.total_packets
+                                ack_packet = UDPPacket(UDPPacket.TYPE_FIN_ACK, int(time.time() * 1000000), self.total_packets)
+                                server_socket.sendto(ack_packet.to_bytes(), addr)
+                                break
+                                
+                            self.max_seq_no = max(self.max_seq_no, packet.seq_no)
+                            self.total_sent += len(data)
+                            self.total_packets += 1
+                            transit = (time.time() - packet.timestamp / 1000000) * 1000 # 单位ms
+                            self.total_jitters += abs(transit - last_transit)
+                            last_transit = transit
+
+                        except Exception as e:
+                            print(f"Error receiving data: {e}")
+                            break
+
+                except KeyboardInterrupt:
+                    self.forced_quit = True
+                    for _ in range(10):
+                        if 'addr' in locals():
+                            # 发送强制退出信号给客户端
+                            quit_packet = UDPPacket(UDPPacket.TYPE_FORCE_QUIT, int(time.time() * 1000000), total_packets=self.total_packets)
+                            server_socket.sendto(quit_packet.to_bytes(), addr)
+                            # 等待确认
+                            try:
+                                server_socket.settimeout(0.1)
+                                data, _ = server_socket.recvfrom(65535)
+                                packet = UDPPacket.from_bytes(data)
+                                if packet.seq_no == UDPPacket.TYPE_FORCE_QUIT_ACK:
+                                    self.total_sent_packets = packet.total_packets
+                                    break
+                            except socket.timeout:
+                                continue
                 
                 self.is_running = False
                 self.test_end_time = time.time()
@@ -114,6 +145,9 @@ class UDPFlowGenerator(FlowGenerator):
                     self.print_summary()
                 
                 if self.one_test:
+                    break
+
+                if self.forced_quit:
                     break
 
         except Exception as e:
@@ -127,7 +161,7 @@ class UDPFlowGenerator(FlowGenerator):
             print(f"UDP Client connecting to {self.host}:{self.port}")
             
             # 发送建立连接请求
-            for _ in range(10):  # 重试3次
+            for _ in range(10):  # 重试10次
                 try:
                     init_packet = UDPPacket(UDPPacket.TYPE_INIT, int(time.time() * 1000000))
                     self.socket.sendto(init_packet.to_bytes(), (self.host, self.port))
@@ -155,21 +189,37 @@ class UDPFlowGenerator(FlowGenerator):
 
             self.reset_bandwidth()
             seq_no = 1
+            self.forced_quit = False
 
             if self.pps:
                 next_send_time = time.time()
+            try:
+                while True:
+                    if self.duration and time.time() - self.start_time >= self.duration:
+                        break
+                    if self.total_size and self.total_sent >= self.total_size:
+                        break
 
-            while True:
-                if self.duration and time.time() - self.start_time >= self.duration:
-                    break
-                if self.total_size and self.total_sent >= self.total_size:
-                    break
-
-                if time.time() - last_reset_time >= self.bandwidth_reset_interval:
-                    self.reset_bandwidth()
-                    last_reset_time = time.time()
-                    
-                try:
+                    if time.time() - last_reset_time >= self.bandwidth_reset_interval:
+                        self.reset_bandwidth()
+                        last_reset_time = time.time()
+                        
+                    # 添加非阻塞接收检查
+                    self.socket.setblocking(False)
+                    try:
+                        data, _ = self.socket.recvfrom(65535)
+                        packet = UDPPacket.from_bytes(data)
+                        if packet.seq_no == UDPPacket.TYPE_FORCE_QUIT:
+                            self.total_received_packets = packet.total_packets
+                            # 发送确认
+                            ack_packet = UDPPacket(UDPPacket.TYPE_FORCE_QUIT_ACK, int(time.time() * 1000000), self.total_packets)
+                            self.socket.sendto(ack_packet.to_bytes(), (self.host, self.port))
+                            self.forced_quit = True
+                            break
+                    except (socket.error, BlockingIOError):
+                        pass
+                    self.socket.setblocking(True)
+                        
                     if self.pps:
                         current_time = time.time()
                         while True:
@@ -188,25 +238,39 @@ class UDPFlowGenerator(FlowGenerator):
                         self.total_sent += len(test_data)
                         self.total_packets += 1
                         seq_no += 1
-                            
-                except socket.error as e:
-                    print(f"Send error: {e}")
-                    break
 
-            # 发送FIN包并等待确认
-            for _ in range(40):
-                try:
-                    fin_packet = UDPPacket(UDPPacket.TYPE_FIN, int(time.time() * 1000000), self.total_packets)
-                    self.socket.sendto(fin_packet.to_bytes(), (self.host, self.port))
-                    
-                    self.socket.settimeout(0.1)
-                    data, _ = self.socket.recvfrom(65535)
-                    packet = UDPPacket.from_bytes(data)
-                    if packet.seq_no == UDPPacket.TYPE_FIN_ACK:
-                        self.total_received_packets = packet.total_packets
-                        break
-                except socket.timeout:
-                    continue
+                if not self.forced_quit:
+                    # 发送FIN包并等待确认
+                    for _ in range(40):
+                        try:
+                            fin_packet = UDPPacket(UDPPacket.TYPE_FIN, int(time.time() * 1000000), self.total_packets)
+                            self.socket.sendto(fin_packet.to_bytes(), (self.host, self.port))
+                            
+                            self.socket.settimeout(0.1)
+                            data, _ = self.socket.recvfrom(65535)
+                            packet = UDPPacket.from_bytes(data)
+                            if packet.seq_no == UDPPacket.TYPE_FIN_ACK:
+                                self.total_received_packets = packet.total_packets
+                                break
+                        except socket.timeout:
+                            continue
+
+            except KeyboardInterrupt:
+                self.forced_quit = True
+                for _ in range(10):
+                    # 发送强制退出信号给服务器
+                    quit_packet = UDPPacket(UDPPacket.TYPE_FORCE_QUIT, int(time.time() * 1000000), total_packets=self.total_packets)
+                    self.socket.sendto(quit_packet.to_bytes(), (self.host, self.port))
+                    # 等待确认
+                    try:
+                        self.socket.settimeout(0.1)
+                        data, _ = self.socket.recvfrom(65535)
+                        packet = UDPPacket.from_bytes(data)
+                        if packet.seq_no == UDPPacket.TYPE_FORCE_QUIT_ACK:
+                            self.total_received_packets = packet.total_packets
+                            break
+                    except socket.timeout:
+                        continue
 
             self.is_running = False
             self.test_end_time = time.time()

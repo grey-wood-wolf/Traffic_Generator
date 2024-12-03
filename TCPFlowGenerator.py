@@ -132,6 +132,14 @@ class TCPFlowGenerator(FlowGenerator):
 
         except Exception as e:
             print(f"Client error: {e}")
+        except KeyboardInterrupt:
+            self.is_running = False
+            self.test_end_time = time.time()
+            
+            if self.stats_thread:
+                self.stats_thread.join()
+
+            self.print_summary()
         finally:
             if self.socket:
                 self.socket.close()
