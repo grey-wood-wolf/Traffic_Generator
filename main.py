@@ -22,9 +22,12 @@ def main():
     parser.add_argument('-J', '--json', action='store_true', help='Print statistics as JSON file')
     parser.add_argument('-1', '--one_test', action='store_true', help='Run only one test')
     parser.add_argument('-B', '--bind_address', type=str, help='Bind address for server')
-
+    parser.add_argument('-v', '--version', action='store_true', help='print version')
+    
     args = parser.parse_args()
-
+    if args.version:
+        print('Klonetpktgen: 1.1.0')
+        return
     if args.time is not None and args.size is not None:
         print("Error: Cannot specify both time and size")
         sys.exit(1)
