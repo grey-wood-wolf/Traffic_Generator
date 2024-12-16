@@ -122,7 +122,7 @@ class FlowGenerator:
                 
                 # 记录统计数据
                 interval_stats = {
-                    'times': f'{end_time:.2f}-{begin_time:.2f}', 
+                    'times': f'{begin_time:.2f}-{end_time:.2f}', 
                     'bytes': bytes_diff,
                     'bandwidth': current_bandwidth * 1000000,
                     'packets': packets_diff,
@@ -164,29 +164,29 @@ class FlowGenerator:
                     self.json_info["intervals"].append(interval_stats)
                 else:
                     if self.type == 'tcp' and self.mode == 'client':
-                        print(f"[{end_time:.2f}-{begin_time:.2f} s]  "
+                        print(f"[ {begin_time:.2f}-{end_time:.2f} s]  "
                             f"Transfer: {bytes_diff/(1024*1024):.2f} MB  "
                             f"Bandwidth: {current_bandwidth:.2f} Mbps  "
                             f"Cwnd: {cwnd}  "
                             f"Retr: {retr}  "
                             f"RTT: {rtt:.2f}  ")
                     elif self.type == 'tcp' and self.mode == 'server':
-                        print(f"[{end_time:.2f}-{begin_time:.2f} s]  "
+                        print(f"[ {begin_time:.2f}-{end_time:.2f} s]  "
                             f"Received: {bytes_diff/(1024*1024):.2f} MB  "
                             f"Bandwidth: {current_bandwidth:.2f} Mbps  ")
                     elif self.type == 'udp' and self.mode == 'client':
-                        print(f"[{end_time:.2f}-{begin_time:.2f} s]  "
+                        print(f"[ {begin_time:.2f}-{end_time:.2f} s]  "
                             f"Transfer: {bytes_diff/(1024*1024):.2f} MB  "
                             f"Bandwidth: {current_bandwidth:.2f} Mbps  "
                             f"Total Datagrams: {packets_diff}  ")
                     elif self.type == 'udp' and self.mode == 'server':
-                        print(f"[{end_time:.2f}-{begin_time:.2f} s]  "
+                        print(f"[ {begin_time:.2f}-{end_time:.2f} s]  "
                             f"Transfer: {bytes_diff/(1024*1024):.2f} MB  "
                             f"Bitrate: {current_bandwidth:.2f} Mbps  "
                             f"Jitters: {avg_jitter:.3f} ms  "
                             f"Lost/Total Datagrams: {lost_packets}/{real_sent_packets_diff} ({lost_percent:.0f}%)  ")
                     else:
-                        print(f"[{end_time:.2f}-{begin_time:.2f} s]  "
+                        print(f"[ {begin_time:.2f}-{end_time:.2f} s]  "
                             f"Transfer: {bytes_diff/(1024*1024):.2f} MB  "
                             f"Bandwidth: {current_bandwidth:.2f} Mbps  ")
                 
