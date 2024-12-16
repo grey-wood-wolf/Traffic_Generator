@@ -23,11 +23,13 @@ class TCPFlowGenerator(FlowGenerator):
             server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             server_socket.bind((self.bind_address, self.port))
             server_socket.listen(1)
-            print(f"TCP Server listening on {self.bind_address}:{self.port}")
+            if not self.json:
+                print(f"TCP Server listening on {self.bind_address}:{self.port}")
 
             while True:
                 client_socket, address = server_socket.accept()
-                print(f"Connection from {address}")
+                if not self.json:
+                    print(f"Connection from {address}")
                 
                 self.total_sent = 0
                 self.total_packets = 0
@@ -78,8 +80,8 @@ class TCPFlowGenerator(FlowGenerator):
             self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 0)
             self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 0)
             self.socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-            
-            print(f"Connected to {self.host}:{self.port}")
+            if not self.json:
+                print(f"Connected to {self.host}:{self.port}")
             
             self.is_running = True
             self.test_start_time = self.start_time = time.time()

@@ -56,11 +56,13 @@ class UDPFlowGenerator(FlowGenerator):
                 self.bind_address = '0.0.0.0'
             server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             server_socket.bind((self.bind_address, self.port))
-            print(f"UDP Server listening on {self.bind_address}:{self.port}")
+            if not self.json:
+                print(f"UDP Server listening on {self.bind_address}:{self.port}")
 
             while True:
                 # 等待客户端发起连接
-                print("Waiting for client connection...")
+                if not self.json:
+                    print("Waiting for client connection...")
                 while True:
                     data, addr = server_socket.recvfrom(65535)
                     packet = UDPPacket.from_bytes(data)
@@ -69,8 +71,8 @@ class UDPFlowGenerator(FlowGenerator):
                         ack_packet = UDPPacket(UDPPacket.TYPE_INIT_ACK, int(time.time() * 1000000))
                         server_socket.sendto(ack_packet.to_bytes(), addr)
                         break
-                
-                print("Client connected, starting test...")
+                if not self.json:
+                    print("Client connected, starting test...")
                 self.received_packets_seq_no = set()
                 self.total_sent = 0
                 self.total_packets = 0
@@ -162,7 +164,8 @@ class UDPFlowGenerator(FlowGenerator):
             self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             if self.bind_address:
                 self.socket.bind((self.bind_address, 0))
-            print(f"UDP Client connecting to {self.host}:{self.port}")
+            if not self.json:
+                print(f"UDP Client connecting to {self.host}:{self.port}")
             
             # 发送建立连接请求
             for _ in range(10):  # 重试10次
@@ -174,7 +177,8 @@ class UDPFlowGenerator(FlowGenerator):
                     data, _ = self.socket.recvfrom(65535)
                     packet = UDPPacket.from_bytes(data)
                     if packet.seq_no == UDPPacket.TYPE_INIT_ACK:
-                        print("Connection established")
+                        if not self.json:
+                            print("Connection established")
                         break
                 except socket.timeout:
                     continue
