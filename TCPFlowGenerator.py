@@ -7,19 +7,20 @@ from FlowGenerator import FlowGenerator
 class TCPFlowGenerator(FlowGenerator):
     def __init__(self, bind_address, host, port, mode, duration=None, total_size=None, packet_size=None, bandwidth=None,
                     interval=1, distributed_packets_per_second=None, distributed_packet_size=None,
-                    distributed_bandwidth=None, bandwidth_reset_interval=None, json=False, one_test=False):
+                    distributed_bandwidth=None, bandwidth_reset_interval=None, json=False, one_test=False, ipv6=False):
         if packet_size is None:
             packet_size = 64000
         super().__init__(bind_address, host, port, mode, duration, total_size, packet_size, bandwidth, interval,
                         distributed_packets_per_second, distributed_packet_size, distributed_bandwidth,
-                        bandwidth_reset_interval, json, one_test)
+                        bandwidth_reset_interval, json, one_test, ipv6)
         self.type = 'tcp'
 
     def run_server(self):
         try:
             if not self.bind_address:
-                self.bind_address = '0.0.0.0'
-            server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                self.bind_address = '0.0.0.0' if not self.ipv6 else '::'
+            socket_family = socket.AF_INET6 if self.ipv6 else socket.AF_INET
+            server_socket = socket.socket(socket_family, socket.SOCK_STREAM)
             server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             server_socket.bind((self.bind_address, self.port))
             server_socket.listen(1)
@@ -72,9 +73,8 @@ class TCPFlowGenerator(FlowGenerator):
 
     def run_client(self):
         try:
-            self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            if self.bind_address:
-                self.socket.bind((self.bind_address, 0))
+            socket_family = socket.AF_INET6 if self.ipv6 else socket.AF_INET
+            self.socket = socket.socket(socket_family, socket.SOCK_STREAM)
             self.socket.connect((self.host, self.port))
             
             self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 0)

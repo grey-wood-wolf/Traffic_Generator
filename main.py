@@ -1,8 +1,27 @@
 import argparse
 import sys
+import ipaddress
 
 from TCPFlowGenerator import TCPFlowGenerator
 from UDPFlowGenerator import UDPFlowGenerator
+
+def is_ipv6(address):
+    try:
+        # 使用 ipaddress 模块尝试将地址解析为 IPv6
+        ip = ipaddress.ip_address(address)
+        return isinstance(ip, ipaddress.IPv6Address)
+    except ValueError:
+        # 如果无法解析地址，则抛出 ValueError
+        return False
+    
+def is_ipv4(address):
+    try:
+        # 使用 ipaddress 模块尝试将地址解析为 IPv4
+        ip = ipaddress.ip_address(address)
+        return isinstance(ip, ipaddress.IPv4Address)
+    except ValueError:
+        # 如果无法解析地址，则抛出 ValueError
+        return False
 
 def main():
     parser = argparse.ArgumentParser(description='TCP/UDP Flow Generator')
@@ -23,6 +42,7 @@ def main():
     parser.add_argument('-1', '--one_test', action='store_true', help='Run only one test')
     parser.add_argument('-B', '--bind_address', type=str, help='Bind address for server')
     parser.add_argument('-v', '--version', action='store_true', help='print version')
+    parser.add_argument('-6', '--ipv6', action='store_true', help='Use IPv6 instead of IPv4')
     
     args = parser.parse_args()
     if args.version:
@@ -40,6 +60,23 @@ def main():
     if args.server and args.client:
         print("Error: Cannot specify both server and client")
         sys.exit(1)
+    if args.ipv6:
+        # 判断-B和-c参数是否为ipv6地址
+        if args.bind_address and not is_ipv6(args.bind_address):
+            print("Error: Bind address must be a valid IPv6 address")
+            sys.exit(1)
+        if args.client and not is_ipv6(args.client):
+            print("Error: Client address must be a valid IPv6 address")
+            sys.exit(1)
+    else:
+        # 判断-B和-c参数是否为ipv4地址
+        if args.bind_address and not is_ipv4(args.bind_address):
+            print("Error: Bind address must be a valid IPv4 address")
+            sys.exit(1)
+        if args.client and not is_ipv4(args.client):
+            print("Error: Client address must be a valid IPv4 address")
+            sys.exit(1)
+
 
     # 选择Generator类
     GeneratorClass = UDPFlowGenerator if args.udp else TCPFlowGenerator
@@ -48,14 +85,14 @@ def main():
                                args.packet_size, args.bandwidth, args.interval,
                                args.distributed_packets_per_second, args.distributed_packet_size,
                                args.distributed_bandwidth, args.bandwidth_reset_interval,
-                               args.json, args.one_test)
+                               args.json, args.one_test, args.ipv6)
         generator.run_server()
     elif args.client:
         generator = GeneratorClass(args.bind_address, args.client, args.port, "client", args.time, args.size,
                                args.packet_size, args.bandwidth, args.interval,
                                args.distributed_packets_per_second, args.distributed_packet_size,
                                args.distributed_bandwidth, args.bandwidth_reset_interval,
-                               args.json, args.one_test)
+                               args.json, args.one_test, args.ipv6)
         generator.run_client()
     else:
         parser.print_help()

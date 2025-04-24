@@ -10,7 +10,7 @@ INF = float('inf')
 class FlowGenerator:
     def __init__(self, bind_address, host, port, mode, duration=None, total_size=None, packet_size=None, bandwidth=None,
                  interval=1, distributed_packets_per_second=None, distributed_packet_size=None,
-                 distributed_bandwidth=None, bandwidth_reset_interval=None, json=False, one_test=False):
+                 distributed_bandwidth=None, bandwidth_reset_interval=None, json=False, one_test=False, ipv6=False):
         self.bind_address = bind_address
         self.mode = mode
         self.host = host
@@ -41,6 +41,7 @@ class FlowGenerator:
         self.interval_data = []
         self.test_start_time = None
         self.test_end_time = None
+        self.ipv6 = ipv6
 
     def to_bps(self, value):
         if value is None:
