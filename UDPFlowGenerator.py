@@ -38,7 +38,11 @@ class UDPFlowGenerator(FlowGenerator):
         if bandwidth is None:
             bandwidth = "1M"
         if packet_size is None:
-            packet_size = 1450
+            if bandwidth is not None:
+                packet_size = min(1450, int(self.to_bps(bandwidth) * 0.005))
+            else:
+                packet_size = 1450
+            packet_size = max(80, packet_size)  # UDP最小包大小为64字节
         super().__init__(bind_address, host, port, mode, duration, total_size, packet_size, bandwidth, interval,
                          distributed_packets_per_second, distributed_packet_size, distributed_bandwidth,  
                          bandwidth_reset_interval, json, one_test, ipv6)

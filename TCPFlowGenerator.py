@@ -14,6 +14,7 @@ class TCPFlowGenerator(FlowGenerator):
                 packet_size = min(64000, int(bandwidth * 0.005) )
             else:
                 packet_size = 64000
+            packet_size = max(80, packet_size)
         super().__init__(bind_address, host, port, mode, duration, total_size, packet_size, bandwidth, interval,
                         distributed_packets_per_second, distributed_packet_size, distributed_bandwidth,
                         bandwidth_reset_interval, json, one_test, ipv6)
