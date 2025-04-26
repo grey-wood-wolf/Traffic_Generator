@@ -79,6 +79,7 @@ class UDPFlowGenerator(FlowGenerator):
                 self.total_packets = 0
                 self.max_seq_no = 0         # 最大的包序列号
                 self.total_jitters = 0      # 总抖动
+                self.total_delay = 0        # 总延迟
                 
                 self.is_running = True
                 self.test_start_time = self.start_time = time.time()
@@ -118,6 +119,7 @@ class UDPFlowGenerator(FlowGenerator):
                             transit = (time.time() - packet.timestamp / 1000000) * 1000 # 单位ms
                             self.total_jitters += abs(transit - last_transit)
                             last_transit = transit
+                            self.total_delay += transit # 单位ms
 
                         except Exception as e:
                             print(f"Error receiving data: {e}")

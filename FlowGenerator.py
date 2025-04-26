@@ -98,6 +98,7 @@ class FlowGenerator:
     def print_statistics(self):
         last_bytes = 0
         last_packets = 0
+        last_delay = 0
         last_time = self.start_time
         start_time = self.start_time
         self.retr = 0
@@ -120,6 +121,7 @@ class FlowGenerator:
                 if self.type == 'udp' and self.mode == 'server':
                     jitters_diff = self.total_jitters - last_jitters
                     real_sent_packets_diff = self.max_seq_no - last_max_seq_no
+                    delay_diff = self.total_delay - last_delay
                 
                 # 记录统计数据
                 interval_stats = {
@@ -153,10 +155,12 @@ class FlowGenerator:
                     lost_packets = real_sent_packets_diff - packets_diff
                     lost_percent = 100 * (lost_packets / real_sent_packets_diff if real_sent_packets_diff > 0 else 0)
                     avg_jitter = jitters_diff / packets_diff if packets_diff > 0 else 0
+                    avg_delay = delay_diff / packets_diff if packets_diff > 0 else 0
                     interval_stats.update({
                         'lost_packets': lost_packets,  # 丢包数
                         'lost_percent': lost_percent,  # 丢包率
                         'jitter_ms': avg_jitter,    # 平均抖动
+                        'delay_ms': avg_delay,      # 平均延迟
                     })
 
 
@@ -185,6 +189,7 @@ class FlowGenerator:
                             f"Transfer: {bytes_diff/(1024*1024):.2f} MB  "
                             f"Bitrate: {current_bandwidth:.2f} Mbps  "
                             f"Jitters: {avg_jitter:.3f} ms  "
+                            f"Delay: {avg_delay:.3f} ms  "
                             f"Lost/Total Datagrams: {lost_packets}/{real_sent_packets_diff} ({lost_percent:.0f}%)  ")
                     else:
                         print(f"[ {begin_time:.2f}-{end_time:.2f} s]  "
@@ -196,6 +201,7 @@ class FlowGenerator:
                 last_time = last_time + self.interval
                 if self.type == 'udp' and self.mode == 'server':
                     last_jitters = last_jitters + jitters_diff
+                    last_delay = last_delay + delay_diff
                     last_max_seq_no = last_max_seq_no + real_sent_packets_diff
             if not self.is_running:
                 break
@@ -232,12 +238,15 @@ class FlowGenerator:
         elif self.type == 'udp' and self.mode == 'server':
             lost_packets = self.total_sent_packets - self.total_packets
             avg_jitter = self.total_jitters / self.total_packets if self.total_packets > 0 else 0
+            avg_delay = self.total_delay / self.total_packets if self.total_packets > 0 else 0
             if self.json:
                 sum_info["lost_packets"] = lost_packets
                 sum_info["lost_percent"] = 100 * (lost_packets / self.total_sent_packets)
                 sum_info["jitter_ms"] = avg_jitter
+                sum_info["delay_ms"] = avg_delay 
             else:
                 print("Jitters: {:.3f} ms".format(avg_jitter))
+                print("Delay: {:.3f} ms".format(avg_delay))
                 print(f"Lost/Total Datagrams: {lost_packets}/{self.total_sent_packets} ({lost_packets/self.total_sent_packets*100:.0f}%)")
         elif self.type == 'udp' and self.mode == 'client':
             lost_packets = self.total_packets - self.total_received_packets
