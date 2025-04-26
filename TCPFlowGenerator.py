@@ -9,7 +9,11 @@ class TCPFlowGenerator(FlowGenerator):
                     interval=1, distributed_packets_per_second=None, distributed_packet_size=None,
                     distributed_bandwidth=None, bandwidth_reset_interval=None, json=False, one_test=False, ipv6=False):
         if packet_size is None:
-            packet_size = 64000
+            if bandwidth is not None:
+                bandwidth = self.to_bps(bandwidth)
+                packet_size = min(64000, int(bandwidth * 0.005) )
+            else:
+                packet_size = 64000
         super().__init__(bind_address, host, port, mode, duration, total_size, packet_size, bandwidth, interval,
                         distributed_packets_per_second, distributed_packet_size, distributed_bandwidth,
                         bandwidth_reset_interval, json, one_test, ipv6)
