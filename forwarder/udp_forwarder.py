@@ -420,6 +420,9 @@ def parse_arguments():
     parser.add_argument('--reserve_rate', type=float, default=0.5, help='预留率')
     parser.add_argument('--new_rate', type=float, default=0.2, help='添加率')
     parser.add_argument('--new_content', type=str, default='-uestc-', help='新内容')
+
+    # 版本参数
+    parser.add_argument('-v', '--version', action='store_true', help='print version')
     
     # 解析命令行参数
     return parser.parse_args()
@@ -427,6 +430,11 @@ def parse_arguments():
 if __name__ == '__main__':
 
     args = parse_arguments()
+
+    if args.version:
+        print('udp_forwarder: 1.0.0')
+        exit(0)
+
     ipv4_address = args.ipv4_addr
     ipv4_port = args.ipv4_port
     ipv6_address = args.ipv6_addr
