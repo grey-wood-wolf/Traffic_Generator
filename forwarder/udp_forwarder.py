@@ -433,50 +433,49 @@ if __name__ == '__main__':
 
     if args.version:
         print('udp_forwarder: 1.0.0')
-        exit(0)
+    else:
+        ipv4_address = args.ipv4_addr
+        ipv4_port = args.ipv4_port
+        ipv6_address = args.ipv6_addr
+        ipv6_port = args.ipv6_port
+        reserve_rate = args.reserve_rate
+        new_rate = args.new_rate
+        new_content = args.new_content
 
-    ipv4_address = args.ipv4_addr
-    ipv4_port = args.ipv4_port
-    ipv6_address = args.ipv6_addr
-    ipv6_port = args.ipv6_port
-    reserve_rate = args.reserve_rate
-    new_rate = args.new_rate
-    new_content = args.new_content
+        print(10 * '-' + '开始转发' + 10 * '-')
+        print(f"IPv4 地址: {ipv4_address}, IPv4 端口: {ipv4_port}")
+        print(f"IPv6 地址: {ipv6_address}, IPv6 端口: {ipv6_port}")
+        print(f"预留率: {reserve_rate}, 添加率: {new_rate}, 新内容: {new_content}")
 
-    print(10 * '-' + '开始转发' + 10 * '-')
-    print(f"IPv4 地址: {ipv4_address}, IPv4 端口: {ipv4_port}")
-    print(f"IPv6 地址: {ipv6_address}, IPv6 端口: {ipv6_port}")
-    print(f"预留率: {reserve_rate}, 添加率: {new_rate}, 新内容: {new_content}")
+        forward_config_624 = {
+            'listen_port': ipv6_port,
+            'target_address': ipv4_address,
+            'target_port': ipv4_port
+        }
+        forward_config_426 = {
+            'listen_port': ipv4_port,
+            'target_address': ipv6_address,
+            'target_port': ipv6_port
+        }
+        handler_config = {
+            'reserve_rate': reserve_rate,
+            'new_rate': new_rate,
+            'new_content': new_content
+        }
 
-    forward_config_624 = {
-        'listen_port': ipv6_port,
-        'target_address': ipv4_address,
-        'target_port': ipv4_port
-    }
-    forward_config_426 = {
-        'listen_port': ipv4_port,
-        'target_address': ipv6_address,
-        'target_port': ipv6_port
-    }
-    handler_config = {
-        'reserve_rate': reserve_rate,
-        'new_rate': new_rate,
-        'new_content': new_content
-    }
+        socat_forwarder = SocatTCPForwarder(ipv4_address=ipv4_address, ipv4_port=ipv4_port, ipv6_address=ipv6_address, ipv6_port=ipv6_port)
+        socat_forwarder.start()
 
-    socat_forwarder = SocatTCPForwarder(ipv4_address=ipv4_address, ipv4_port=ipv4_port, ipv6_address=ipv6_address, ipv6_port=ipv6_port)
-    socat_forwarder.start()
+        forwarder_624 = UDPForwarder_624(forward_config=forward_config_624, handler_config=handler_config)
+        forwarder_426 = UDPForwarder_426(forward_config=forward_config_426, handler_config=handler_config)
 
-    forwarder_624 = UDPForwarder_624(forward_config=forward_config_624, handler_config=handler_config)
-    forwarder_426 = UDPForwarder_426(forward_config=forward_config_426, handler_config=handler_config)
+        threading_624 = threading.Thread(target=forwarder_624.start, daemon=True)
+        threading_426 = threading.Thread(target=forwarder_426.start, daemon=True)
 
-    threading_624 = threading.Thread(target=forwarder_624.start, daemon=True)
-    threading_426 = threading.Thread(target=forwarder_426.start, daemon=True)
-
-    threading_624.start()
-    threading_426.start()
-    threading_624.join()
-    threading_426.join()
+        threading_624.start()
+        threading_426.start()
+        threading_624.join()
+        threading_426.join()
 
 
 # 运行示例
