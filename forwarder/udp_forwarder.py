@@ -140,7 +140,10 @@ class UDPForwarder_426(UDPForwarder):
                 try:
                     data = session['queue'].get(timeout=1.0)
 
-                    new_data = self.udp_handler.handle(data)
+                    if len(data) > 100:
+                        new_data = self.udp_handler.handle(data)
+                    else:
+                        new_data = data
                     
                     try:
                         sock_ipv6.sendto(new_data, ipv6_dest)
@@ -288,7 +291,10 @@ class UDPForwarder_624(UDPForwarder):
                 try:
                     data = session['queue'].get(timeout=1.0)
 
-                    new_data = self.udp_handler.handle(data)
+                    if len(data) > 100:
+                        new_data = self.udp_handler.handle(data)
+                    else:
+                        new_data = data
                     
                     try:
                         sock_ipv4.sendto(new_data, dest_address)
@@ -376,12 +382,12 @@ class SocatTCPForwarder:
 def parse_arguments():
     parser = argparse.ArgumentParser(description="Set Forwarder related parameters")
     
-    parser.add_argument('--ipv4_addr', type=str, default='172.17.0.3', help='IPv4 address')
+    parser.add_argument('--ipv4_addr', type=str, default='192.168.1.2', help='IPv4 address')
     parser.add_argument('--ipv4_port', type=int, default=5201, help='IPv4 port')
     parser.add_argument('--ipv6_addr', type=str, default='2001:db8::2', help='IPv6 address')
     parser.add_argument('--ipv6_port', type=int, default=5201, help='IPv6 port')
     
-    parser.add_argument('--reserve_rate', type=float, default=0.5, help='Reserve rate')
+    parser.add_argument('--reserve_rate', type=float, default=0.3, help='Reserve rate')
     parser.add_argument('--new_rate', type=float, default=0.2, help='New content rate')
     parser.add_argument('--new_content', type=str, default='-uestc-', help='New content')
 
