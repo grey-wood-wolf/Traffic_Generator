@@ -3,6 +3,7 @@ import time
 import numpy as np
 import struct
 import json
+import sys
 
 # 定义无穷
 INF = float('inf')
@@ -135,16 +136,21 @@ class FlowGenerator:
                 }
 
                 if self.type == 'tcp' and self.mode == 'client':
-                    fmt = "B"*7 + "I"*24
-                    info = self.socket.getsockopt(socket.IPPROTO_TCP, socket.TCP_INFO, 104)
-                    x = struct.unpack(fmt, info)
-                    
-                    mss = x[26]      # advmss字段
-                    cwnd = x[25]     # snd_cwnd字段
-                    cwnd = cwnd * mss if cwnd > 0 else 0  # cwnd(字节)
-                    retr = x[14] - self.retr  # retrans重传计数
-                    self.retr = x[14]
-                    rtt = x[22]      # rtt (微秒)
+                    if sys.platform == 'linux':
+                        fmt = "B"*7 + "I"*24
+                        info = self.socket.getsockopt(socket.IPPROTO_TCP, socket.TCP_INFO, 104)
+                        x = struct.unpack(fmt, info)
+                        
+                        mss = x[26]      # advmss字段
+                        cwnd = x[25]     # snd_cwnd字段
+                        cwnd = cwnd * mss if cwnd > 0 else 0  # cwnd(字节)
+                        retr = x[14] - self.retr  # retrans重传计数
+                        self.retr = x[14]
+                        rtt = x[22]      # rtt (微秒)
+                    elif sys.platform == 'win32':
+                        cwnd =  0
+                        retr = 0
+                        rtt = 0
 
                     interval_stats.update({
                         'cwnd': cwnd,    # cwnd(字节)
