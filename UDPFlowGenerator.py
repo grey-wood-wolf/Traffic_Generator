@@ -34,7 +34,7 @@ class UDPPacket:
 class UDPFlowGenerator(FlowGenerator):
     def __init__(self, bind_address, host, port, mode, duration=None, total_size=None, packet_size=None, bandwidth=None,
                  interval=1, distributed_packets_per_second=None, distributed_packet_size=None,
-                 distributed_bandwidth=None, bandwidth_reset_interval=None, json=False, one_test=False, ipv6=False):
+                 distributed_bandwidth=None, bandwidth_reset_interval=None, json=False, one_test=False, ipv6=False, printpkg = False):
         if bandwidth is None:
             bandwidth = "1M"
         if packet_size is None:
@@ -45,7 +45,7 @@ class UDPFlowGenerator(FlowGenerator):
             packet_size = max(80, packet_size)  # UDP最小包大小为64字节
         super().__init__(bind_address, host, port, mode, duration, total_size, packet_size, bandwidth, interval,
                          distributed_packets_per_second, distributed_packet_size, distributed_bandwidth,  
-                         bandwidth_reset_interval, json, one_test, ipv6)
+                         bandwidth_reset_interval, json, one_test, ipv6, printpkg)
         self.type = 'udp'
         
     def create_test_data(self, seq_no):
@@ -124,6 +124,8 @@ class UDPFlowGenerator(FlowGenerator):
                             self.total_jitters += abs(transit - last_transit)
                             last_transit = transit
                             self.total_delay += transit # 单位ms
+                            if self.pkg_data == "None" and self.printpkg:
+                                self.pkg_data = data.hex()
 
                         except Exception as e:
                             print(f"Error receiving data: {e}")
@@ -252,6 +254,9 @@ class UDPFlowGenerator(FlowGenerator):
                         self.total_sent += len(test_data)
                         self.total_packets += 1
                         seq_no += 1
+
+                    if self.pkg_data == "None" and self.printpkg:
+                        self.pkg_data = test_data.hex()
 
                 if not self.forced_quit:
                     # 发送FIN包并等待确认

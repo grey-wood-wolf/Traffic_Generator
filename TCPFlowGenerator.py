@@ -7,7 +7,7 @@ from FlowGenerator import FlowGenerator
 class TCPFlowGenerator(FlowGenerator):
     def __init__(self, bind_address, host, port, mode, duration=None, total_size=None, packet_size=None, bandwidth=None,
                     interval=1, distributed_packets_per_second=None, distributed_packet_size=None,
-                    distributed_bandwidth=None, bandwidth_reset_interval=None, json=False, one_test=False, ipv6=False):
+                    distributed_bandwidth=None, bandwidth_reset_interval=None, json=False, one_test=False, ipv6=False, printpkg=False):
         if packet_size is None:
             if bandwidth is not None:
                 bandwidth = self.to_bps(bandwidth)
@@ -17,7 +17,7 @@ class TCPFlowGenerator(FlowGenerator):
             packet_size = max(80, packet_size)
         super().__init__(bind_address, host, port, mode, duration, total_size, packet_size, bandwidth, interval,
                         distributed_packets_per_second, distributed_packet_size, distributed_bandwidth,
-                        bandwidth_reset_interval, json, one_test, ipv6)
+                        bandwidth_reset_interval, json, one_test, ipv6, printpkg)
         self.type = 'tcp'
 
     def run_server(self):

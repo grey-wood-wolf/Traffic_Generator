@@ -43,6 +43,7 @@ def main():
     parser.add_argument('-B', '--bind_address', type=str, help='Bind address for server')
     parser.add_argument('-v', '--version', action='store_true', help='print version')
     parser.add_argument('-6', '--ipv6', action='store_true', help='Use IPv6 instead of IPv4')
+    parser.add_argument('-ppkg','--printpkg', action='store_true', help='Print package')
     
     args = parser.parse_args()
     if args.version:
@@ -60,6 +61,10 @@ def main():
     if args.server and args.client:
         print("Error: Cannot specify both server and client")
         sys.exit(1)
+    if args.printpkg:
+        if not args.udp:
+            print("Cannot support this model in TCP now")
+            sys.exit(1)    
     if args.ipv6:
         # 判断-B和-c参数是否为ipv6地址
         if args.bind_address and not is_ipv6(args.bind_address):
@@ -85,14 +90,14 @@ def main():
                                args.packet_size, args.bandwidth, args.interval,
                                args.distributed_packets_per_second, args.distributed_packet_size,
                                args.distributed_bandwidth, args.bandwidth_reset_interval,
-                               args.json, args.one_test, args.ipv6)
+                               args.json, args.one_test, args.ipv6, args.printpkg)
         generator.run_server()
     elif args.client:
         generator = GeneratorClass(args.bind_address, args.client, args.port, "client", args.time, args.size,
                                args.packet_size, args.bandwidth, args.interval,
                                args.distributed_packets_per_second, args.distributed_packet_size,
                                args.distributed_bandwidth, args.bandwidth_reset_interval,
-                               args.json, args.one_test, args.ipv6)
+                               args.json, args.one_test, args.ipv6, args.printpkg)
         generator.run_client()
     else:
         parser.print_help()

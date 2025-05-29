@@ -11,7 +11,7 @@ INF = float('inf')
 class FlowGenerator:
     def __init__(self, bind_address, host, port, mode, duration=None, total_size=None, packet_size=None, bandwidth=None,
                  interval=1, distributed_packets_per_second=None, distributed_packet_size=None,
-                 distributed_bandwidth=None, bandwidth_reset_interval=None, json=False, one_test=False, ipv6=False):
+                 distributed_bandwidth=None, bandwidth_reset_interval=None, json=False, one_test=False, ipv6=False, printpkg=False):
         self.bind_address = bind_address
         self.mode = mode
         self.host = host
@@ -43,6 +43,8 @@ class FlowGenerator:
         self.test_start_time = None
         self.test_end_time = None
         self.ipv6 = ipv6
+        self.printpkg = printpkg
+        self.pkg_data = "None"
 
     def to_bps(self, value):
         if value is None:
@@ -105,6 +107,7 @@ class FlowGenerator:
         self.retr = 0
         last_max_seq_no = 0
         last_jitters = 0
+        pkg_data = "None"
         self.json_info = {"intervals":[], "end":{}}
 
         while True:
@@ -134,6 +137,10 @@ class FlowGenerator:
                     'total_bytes': self.total_sent,
                     'total_packets': self.total_packets
                 }
+
+                if self.printpkg:
+                    pkg_data = self.pkg_data
+                    self.pkg_data = "None"
 
                 if self.type == 'tcp' and self.mode == 'client':
                     if sys.platform == 'linux':
@@ -189,22 +196,26 @@ class FlowGenerator:
                         print(f"[ {begin_time:.2f}-{end_time:.2f} s]  "
                             f"Transfer: {bytes_diff/(1024*1024):.2f} MB  "
                             f"Bandwidth: {current_bandwidth:.2f} Mbps  "
-                            f"Total Datagrams: {packets_diff}  ")
+                            f"Total Datagrams: {packets_diff}  "
+                            f"Package Data: {pkg_data} ")
                     elif self.type == 'udp' and self.mode == 'server':
                         print(f"[ {begin_time:.2f}-{end_time:.2f} s]  "
                             f"Transfer: {bytes_diff/(1024*1024):.2f} MB  "
                             f"Bitrate: {current_bandwidth:.2f} Mbps  "
                             f"Jitters: {avg_jitter:.3f} ms  "
                             f"Delay: {avg_delay:.3f} ms  "
-                            f"Lost/Total Datagrams: {lost_packets}/{real_sent_packets_diff} ({lost_percent:.0f}%)  ")
+                            f"Lost/Total Datagrams: {lost_packets}/{real_sent_packets_diff} ({lost_percent:.0f}%)  "
+                            f"Package Data: {pkg_data} ")
                     else:
                         print(f"[ {begin_time:.2f}-{end_time:.2f} s]  "
                             f"Transfer: {bytes_diff/(1024*1024):.2f} MB  "
-                            f"Bandwidth: {current_bandwidth:.2f} Mbps  ")
+                            f"Bandwidth: {current_bandwidth:.2f} Mbps  "
+                            f"Package Data: {pkg_data} ")
                 
                 last_bytes = last_bytes + bytes_diff
                 last_packets = last_packets + packets_diff
                 last_time = last_time + self.interval
+                pkg_data = "None"
                 if self.type == 'udp' and self.mode == 'server':
                     last_jitters = last_jitters + jitters_diff
                     last_delay = last_delay + delay_diff
