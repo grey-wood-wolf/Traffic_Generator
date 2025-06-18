@@ -43,9 +43,13 @@ class UDPFlowGenerator(FlowGenerator):
             else:
                 packet_size = 1450
             packet_size = max(80, packet_size)  # UDP最小包大小为64字节
+        if ipv6:
+            pkt_head_size = 62 + 16 #16为流发生器所需伪包头
+        else:
+            pkt_head_size = 42 + 16
         super().__init__(bind_address, host, port, mode, duration, total_size, packet_size, bandwidth, interval,
                          distributed_packets_per_second, distributed_packet_size, distributed_bandwidth,  
-                         bandwidth_reset_interval, json, one_test, ipv6, printpkg)
+                         bandwidth_reset_interval, json, one_test, ipv6, printpkg, pkt_head_size)
         self.type = 'udp'
         
     def create_test_data(self, seq_no):
@@ -118,7 +122,9 @@ class UDPFlowGenerator(FlowGenerator):
                                 break
                                 
                             self.max_seq_no = max(self.max_seq_no, packet.seq_no)
-                            self.total_sent += len(data)
+                            self.packet_size = len(data) # 跟新报文长度
+                            self.frame_size = self.packet_size + self.pkt_head_size
+                            self.total_sent += len(data) + self.pkt_head_size
                             self.total_packets += 1
                             transit = (time.time() - packet.timestamp / 1000000) * 1000 # 单位ms
                             self.total_jitters += abs(transit - last_transit)
@@ -242,7 +248,7 @@ class UDPFlowGenerator(FlowGenerator):
                             if current_time > next_send_time:
                                 test_data = self.create_test_data(seq_no)
                                 self.socket.sendto(test_data, (self.host, self.port))
-                                self.total_sent += len(test_data)
+                                self.total_sent += len(test_data) + self.pkt_head_size
                                 self.total_packets += 1
                                 seq_no += 1
                                 next_send_time += self.return_packet_interval()
@@ -251,7 +257,7 @@ class UDPFlowGenerator(FlowGenerator):
                     else:
                         test_data = self.create_test_data(seq_no)
                         self.socket.sendto(test_data, (self.host, self.port))
-                        self.total_sent += len(test_data)
+                        self.total_sent += len(test_data) + self.pkt_head_size
                         self.total_packets += 1
                         seq_no += 1
 

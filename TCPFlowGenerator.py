@@ -15,9 +15,13 @@ class TCPFlowGenerator(FlowGenerator):
             else:
                 packet_size = 64000
             packet_size = max(80, packet_size)
+        if ipv6:
+            pkt_head_size = 74
+        else:
+            pkt_head_size = 54
         super().__init__(bind_address, host, port, mode, duration, total_size, packet_size, bandwidth, interval,
                         distributed_packets_per_second, distributed_packet_size, distributed_bandwidth,
-                        bandwidth_reset_interval, json, one_test, ipv6, printpkg)
+                        bandwidth_reset_interval, json, one_test, ipv6, printpkg, pkt_head_size)
         self.type = 'tcp'
 
     def run_server(self):
@@ -52,9 +56,11 @@ class TCPFlowGenerator(FlowGenerator):
                 try:
                     while True:
                         data = client_socket.recv(65535)
+                        self.packet_size = len(data) # 跟新报文长度
+                        self.frame_size = self.packet_size + self.pkt_head_size
                         if not data:
                             break
-                        self.total_sent += len(data)
+                        self.total_sent += self.packet_size + self.pkt_head_size
                         self.total_packets += 1
 
                 except Exception as e:
@@ -118,7 +124,7 @@ class TCPFlowGenerator(FlowGenerator):
                             if current_time > next_send_time:
                                 test_data = self.create_test_data()
                                 self.socket.sendall(test_data)
-                                self.total_sent += len(test_data)
+                                self.total_sent += len(test_data) + self.pkt_head_size
                                 self.total_packets += 1
                                 next_send_time += self.return_packet_interval()
                             else:
@@ -126,7 +132,7 @@ class TCPFlowGenerator(FlowGenerator):
                     else:
                         test_data = self.create_test_data()
                         self.socket.sendall(test_data)
-                        self.total_sent += len(test_data)
+                        self.total_sent += len(test_data) + self.pkt_head_size
                         self.total_packets += 1
                             
                 except socket.error as e:

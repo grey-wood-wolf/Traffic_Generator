@@ -11,7 +11,7 @@ INF = float('inf')
 class FlowGenerator:
     def __init__(self, bind_address, host, port, mode, duration=None, total_size=None, packet_size=None, bandwidth=None,
                  interval=1, distributed_packets_per_second=None, distributed_packet_size=None,
-                 distributed_bandwidth=None, bandwidth_reset_interval=None, json=False, one_test=False, ipv6=False, printpkg=False):
+                 distributed_bandwidth=None, bandwidth_reset_interval=None, json=False, one_test=False, ipv6=False, printpkg=False, pkt_head_size = None):
         self.bind_address = bind_address
         self.mode = mode
         self.host = host
@@ -20,7 +20,9 @@ class FlowGenerator:
         self.total_size = self.to_bytes(total_size)  # 总大小
         self.packet_size = packet_size  # 包大小
         self.bandwidth = self.to_bps(bandwidth)  # 带宽限制
-        self.pps = None if self.bandwidth is None else int(self.bandwidth / (packet_size * 8))
+        self.pkt_head_size = pkt_head_size
+        self.frame_size = self.packet_size + self.pkt_head_size
+        self.pps = None if self.bandwidth is None else int(self.bandwidth / (self.frame_size * 8))
         self.interval = interval  # 统计间隔
         self.dist_pps = distributed_packets_per_second  
         self.dist_len = distributed_packet_size  
@@ -77,7 +79,7 @@ class FlowGenerator:
             return
         if self.dist_bw == 'exp' and self.bandwidth != None:
             bandwidth = int(np.random.exponential(self.bandwidth))
-            self.pps = int(bandwidth / (self.packet_size * 8))
+            self.pps = int(bandwidth / (self.frame_size * 8))
             self.mean_pkt_interval = 1.0 / self.pps 
         else:
             raise ValueError("Unsupported bandwidth distribution")
@@ -121,6 +123,7 @@ class FlowGenerator:
                 bytes_diff = self.total_sent - last_bytes
                 packets_diff = self.total_packets - last_packets
                 current_bandwidth = (bytes_diff * 8) / (interval_time * 1000 * 1000)  # Mbps
+                current_data_rate = current_bandwidth * (self.packet_size / self.frame_size)
                 current_pps = packets_diff / interval_time
                 if self.type == 'udp' and self.mode == 'server':
                     jitters_diff = self.total_jitters - last_jitters
@@ -132,6 +135,7 @@ class FlowGenerator:
                     'times': f'{begin_time:.2f}-{end_time:.2f}', 
                     'bytes': bytes_diff,
                     'bandwidth': current_bandwidth * 1000000,
+                    'data_rate': current_data_rate * 1000000,
                     'packets': packets_diff,
                     'pps': current_pps,
                     'total_bytes': self.total_sent,
@@ -181,27 +185,32 @@ class FlowGenerator:
                 if self.json:
                     self.json_info["intervals"].append(interval_stats)
                 else:
+                    print(self.frame_size, self.pkt_head_size, self.packet_size)
                     if self.type == 'tcp' and self.mode == 'client':
                         print(f"[ {begin_time:.2f}-{end_time:.2f} s]  "
                             f"Transfer: {bytes_diff/(1024*1024):.2f} MB  "
                             f"Bandwidth: {current_bandwidth:.2f} Mbps  "
+                            f"Datarate: {current_data_rate:.2f} Mbps  "
                             f"Cwnd: {cwnd}  "
                             f"Retr: {retr}  "
                             f"RTT: {rtt:.2f}  ")
                     elif self.type == 'tcp' and self.mode == 'server':
                         print(f"[ {begin_time:.2f}-{end_time:.2f} s]  "
                             f"Received: {bytes_diff/(1024*1024):.2f} MB  "
-                            f"Bandwidth: {current_bandwidth:.2f} Mbps  ")
+                            f"Bandwidth: {current_bandwidth:.2f} Mbps  "
+                            f"Datarate: {current_data_rate:.2f} Mbps  ")
                     elif self.type == 'udp' and self.mode == 'client':
                         print(f"[ {begin_time:.2f}-{end_time:.2f} s]  "
                             f"Transfer: {bytes_diff/(1024*1024):.2f} MB  "
                             f"Bandwidth: {current_bandwidth:.2f} Mbps  "
+                            f"Datarate: {current_data_rate:.2f} Mbps  "
                             f"Total Datagrams: {packets_diff}  "
                             f"Package Data: {pkg_data} ")
                     elif self.type == 'udp' and self.mode == 'server':
                         print(f"[ {begin_time:.2f}-{end_time:.2f} s]  "
                             f"Transfer: {bytes_diff/(1024*1024):.2f} MB  "
                             f"Bitrate: {current_bandwidth:.2f} Mbps  "
+                            f"Datarate: {current_data_rate:.2f} Mbps  "
                             f"Jitters: {avg_jitter:.3f} ms  "
                             f"Delay: {avg_delay:.3f} ms  "
                             f"Lost/Total Datagrams: {lost_packets}/{real_sent_packets_diff} ({lost_percent:.0f}%)  "
@@ -210,6 +219,7 @@ class FlowGenerator:
                         print(f"[ {begin_time:.2f}-{end_time:.2f} s]  "
                             f"Transfer: {bytes_diff/(1024*1024):.2f} MB  "
                             f"Bandwidth: {current_bandwidth:.2f} Mbps  "
+                            f"Datarate: {current_data_rate:.2f} Mbps  "
                             f"Package Data: {pkg_data} ")
                 
                 last_bytes = last_bytes + bytes_diff
@@ -230,6 +240,7 @@ class FlowGenerator:
         
         test_duration = self.test_end_time - self.test_start_time
         avg_bandwidth = (self.total_sent * 8) / (test_duration * 1000 * 1000) if self.total_sent > 0 else 0
+        avg_data_rate = avg_bandwidth * (self.packet_size / self.frame_size)
         
         if self.json:
             sum_info = {"start": self.test_start_time, 
@@ -237,12 +248,14 @@ class FlowGenerator:
                         "seconds": test_duration,
                         "bytes": self.total_sent,
                         "bits_per_second": avg_bandwidth * 1000000,
+                        "data_bits_per_second": avg_data_rate * 1000000
                     }
         else:
             print("\n=== Test Summary ===")
             print(f"Duration: {test_duration:.2f} seconds")
             print(f"Total Data: {self.total_sent/(1024*1024):.2f} MB")
             print(f"Average Bandwidth: {avg_bandwidth:.2f} Mbps")
+            print(f"Average Datarate: {avg_data_rate:.2f} Mbps")
         if self.type == 'tcp' and self.mode == 'client':
             if self.json:
                 sum_info["max_snd_cwnd"] = max([x['cwnd'] for x in self.interval_data])
