@@ -2,6 +2,9 @@ import socket
 import time
 import threading
 import struct
+import sys
+import subprocess
+import re
 
 from FlowGenerator import FlowGenerator
 
@@ -30,6 +33,57 @@ class UDPPacket:
         header = data[:16]  # 4+8+4=16字节的包头
         seq_no, timestamp, total_packets = struct.unpack('!IQI', header)
         return UDPPacket(seq_no, timestamp, total_packets, data[16:])
+    
+def get_delay_offset():
+    def convert_to_us(value: float, unit: str) -> float:
+        """将不同时间单位转换为u秒(us)"""
+        unit = unit.lower()
+        if unit == "us":
+            return value
+        elif unit == "ns":
+            return value / 1e3  
+        elif unit == "ms":
+            return value * 1e3
+        elif unit == "s":
+            return value * 1e6  # 秒转换为微秒
+        else:
+            raise ValueError(f"未知的时间单位: {unit}")
+    
+    try:
+        if sys.platform == 'win32':
+            output = subprocess.check_output(["ntpq", "-np"], text=True)
+            # 取出最后一行
+            lines = output.strip().split('\n')
+            if not lines:
+                return None
+            output = lines[-1]
+            parts = output.split()
+            delay, offset = float(parts[7]) / 2, float(parts[8])  # 列索引从0开始
+            return delay * 1000  # 转换为us
+        elif sys.platform == 'linux':
+            output = subprocess.check_output(["chronyc", "sources"], text=True)
+            # 取出最后一行
+            lines = output.strip().split('\n')
+            if not lines:
+                return None
+            output = lines[-1]
+            # 匹配带单位的偏移量（如 -36us、0.5ms、150ns）
+            pattern = r"\^\*\s+[\w\.]+\s+\d+\s+\d+\s+\d+\s+\d+\s+([+-]?\d*\.?\d+)(us|ms|ns)\[\s*([+-]?\d*\.?\d+)(us|ms|ns)\]"
+            match = re.search(pattern, output)
+            
+            if match:
+                measured_value = float(match.group(3))
+                measured_unit = match.group(4)
+                
+                # 统一转换为秒
+                measured_ms = convert_to_us(measured_value, measured_unit)
+                return measured_ms
+            else:
+                return None
+    except subprocess.CalledProcessError as e:
+        return None
+    except ValueError as e:
+        return None
 
 class UDPFlowGenerator(FlowGenerator):
     def __init__(self, bind_address, host, port, mode, duration=None, total_size=None, packet_size=None, bandwidth=None,
@@ -51,14 +105,36 @@ class UDPFlowGenerator(FlowGenerator):
                          distributed_packets_per_second, distributed_packet_size, distributed_bandwidth,  
                          bandwidth_reset_interval, json, one_test, ipv6, printpkg, pkt_head_size)
         self.type = 'udp'
+        self.delay_offset = 0
+        self.running = True
         
     def create_test_data(self, seq_no):
         payload_size = self.packet_size - 16  # 减去包头大小
         test_data = b'x' * payload_size
-        packet = UDPPacket(seq_no, int(time.time() * 1000000), 0, test_data)
+        packet = UDPPacket(seq_no, int(time.time() * 1000000 - self.delay_offset), 0, test_data)
         return packet.to_bytes()
 
+    def delay_offset_measurement(self):
+        if sys.platform == 'linux':
+            # 监测是否运行了 chronyd
+            output = subprocess.check_output(["systemctl", "is-active", "chronyd"], text=True)
+            if output != "active\n":
+                return 
+        elif sys.platform == 'win32':
+            # 运行 ntpq --version 看是否报错
+            try:
+                output = subprocess.check_output(["ntpq", "--version"], text=True)
+            except:
+                return
+        while self.running:
+            self.delay_offset = get_delay_offset()
+            if self.delay_offset is None:
+                self.delay_offset = 0
+            time.sleep(0.5)
+            
     def run_server(self):
+        m_t = threading.Thread(target=self.delay_offset_measurement)
+        m_t.start()
         try:
             if not self.bind_address:
                 self.bind_address = '0.0.0.0' if not self.ipv6 else '::'
@@ -77,7 +153,7 @@ class UDPFlowGenerator(FlowGenerator):
                     packet = UDPPacket.from_bytes(data)
                     if packet.seq_no == UDPPacket.TYPE_INIT:
                         # 发送确认包
-                        ack_packet = UDPPacket(UDPPacket.TYPE_INIT_ACK, int(time.time() * 1000000))
+                        ack_packet = UDPPacket(UDPPacket.TYPE_INIT_ACK, int(time.time() * 1000000 - self.delay_offset))
                         server_socket.sendto(ack_packet.to_bytes(), addr)
                         break
                 if not self.json:
@@ -105,19 +181,20 @@ class UDPFlowGenerator(FlowGenerator):
                     while self.is_running:
                         try:
                             data, addr = server_socket.recvfrom(65535)
+                            now_time = time.time()
                             packet = UDPPacket.from_bytes(data)
 
                             if packet.seq_no == UDPPacket.TYPE_FORCE_QUIT:
                                 self.total_sent_packets = packet.total_packets
                                 # 发送确认
-                                ack_packet = UDPPacket(UDPPacket.TYPE_FORCE_QUIT_ACK, int(time.time() * 1000000), self.total_packets)
+                                ack_packet = UDPPacket(UDPPacket.TYPE_FORCE_QUIT_ACK, int(time.time() * 1000000 - self.delay_offset), self.total_packets)
                                 server_socket.sendto(ack_packet.to_bytes(), addr)
                                 self.is_running = False
                                 break
                             
                             if packet.seq_no == UDPPacket.TYPE_FIN:
                                 self.total_sent_packets = packet.total_packets
-                                ack_packet = UDPPacket(UDPPacket.TYPE_FIN_ACK, int(time.time() * 1000000), self.total_packets)
+                                ack_packet = UDPPacket(UDPPacket.TYPE_FIN_ACK, int(time.time() * 1000000 - self.delay_offset), self.total_packets)
                                 server_socket.sendto(ack_packet.to_bytes(), addr)
                                 break
                                 
@@ -126,7 +203,7 @@ class UDPFlowGenerator(FlowGenerator):
                             self.frame_size = self.packet_size + self.pkt_head_size
                             self.total_sent += len(data) + self.pkt_head_size
                             self.total_packets += 1
-                            transit = (time.time() - packet.timestamp / 1000000) * 1000 # 单位ms
+                            transit = (now_time - self.delay_offset / 1000000 - packet.timestamp / 1000000) * 1000  # 单位ms
                             self.total_jitters += abs(transit - last_transit)
                             last_transit = transit
                             self.total_delay += transit # 单位ms
@@ -142,7 +219,7 @@ class UDPFlowGenerator(FlowGenerator):
                     for _ in range(10):
                         if 'addr' in locals():
                             # 发送强制退出信号给客户端
-                            quit_packet = UDPPacket(UDPPacket.TYPE_FORCE_QUIT, int(time.time() * 1000000), total_packets=self.total_packets)
+                            quit_packet = UDPPacket(UDPPacket.TYPE_FORCE_QUIT, int(time.time() * 1000000 - self.delay_offset), total_packets=self.total_packets)
                             server_socket.sendto(quit_packet.to_bytes(), addr)
                             # 等待确认
                             try:
@@ -172,9 +249,12 @@ class UDPFlowGenerator(FlowGenerator):
         except Exception as e:
             print(f"Server error: {e}")
         finally:
+            self.running = False
             server_socket.close()
 
     def run_client(self):
+        m_t = threading.Thread(target=self.delay_offset_measurement)
+        m_t.start()
         try:
             socket_family = socket.AF_INET6 if self.ipv6 else socket.AF_INET
             self.socket = socket.socket(socket_family, socket.SOCK_DGRAM)
@@ -184,7 +264,7 @@ class UDPFlowGenerator(FlowGenerator):
             # 发送建立连接请求
             for _ in range(10):  # 重试10次
                 try:
-                    init_packet = UDPPacket(UDPPacket.TYPE_INIT, int(time.time() * 1000000))
+                    init_packet = UDPPacket(UDPPacket.TYPE_INIT, int(time.time() * 1000000 - self.delay_offset))
                     self.socket.sendto(init_packet.to_bytes(), (self.host, self.port))
                     
                     self.socket.settimeout(0.1)
@@ -234,7 +314,7 @@ class UDPFlowGenerator(FlowGenerator):
                         if packet.seq_no == UDPPacket.TYPE_FORCE_QUIT:
                             self.total_received_packets = packet.total_packets
                             # 发送确认
-                            ack_packet = UDPPacket(UDPPacket.TYPE_FORCE_QUIT_ACK, int(time.time() * 1000000), self.total_packets)
+                            ack_packet = UDPPacket(UDPPacket.TYPE_FORCE_QUIT_ACK, int(time.time() * 1000000 - self.delay_offset), self.total_packets)
                             self.socket.sendto(ack_packet.to_bytes(), (self.host, self.port))
                             self.forced_quit = True
                             break
@@ -268,7 +348,7 @@ class UDPFlowGenerator(FlowGenerator):
                     # 发送FIN包并等待确认
                     for _ in range(40):
                         try:
-                            fin_packet = UDPPacket(UDPPacket.TYPE_FIN, int(time.time() * 1000000), self.total_packets)
+                            fin_packet = UDPPacket(UDPPacket.TYPE_FIN, int(time.time() * 1000000 - self.delay_offset), self.total_packets)
                             self.socket.sendto(fin_packet.to_bytes(), (self.host, self.port))
                             
                             self.socket.settimeout(0.1)
@@ -284,7 +364,7 @@ class UDPFlowGenerator(FlowGenerator):
                 self.forced_quit = True
                 for _ in range(10):
                     # 发送强制退出信号给服务器
-                    quit_packet = UDPPacket(UDPPacket.TYPE_FORCE_QUIT, int(time.time() * 1000000), total_packets=self.total_packets)
+                    quit_packet = UDPPacket(UDPPacket.TYPE_FORCE_QUIT, int(time.time() * 1000000 - self.delay_offset), total_packets=self.total_packets)
                     self.socket.sendto(quit_packet.to_bytes(), (self.host, self.port))
                     # 等待确认
                     try:
@@ -308,5 +388,6 @@ class UDPFlowGenerator(FlowGenerator):
         except Exception as e:
             print(f"Client error: {e}")
         finally:
+            self.running = False
             if self.socket:
                 self.socket.close()
