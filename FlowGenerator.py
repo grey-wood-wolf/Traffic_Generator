@@ -185,7 +185,6 @@ class FlowGenerator:
                 if self.json:
                     self.json_info["intervals"].append(interval_stats)
                 else:
-                    print(self.frame_size, self.pkt_head_size, self.packet_size)
                     if self.type == 'tcp' and self.mode == 'client':
                         print(f"[ {begin_time:.2f}-{end_time:.2f} s]  "
                             f"Transfer: {bytes_diff/(1024*1024):.2f} MB  "
