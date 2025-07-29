@@ -5,7 +5,7 @@ import struct
 import sys
 import subprocess
 import re
-import json
+import json as JSON
 
 from FlowGenerator import FlowGenerator
 
@@ -74,7 +74,7 @@ class UDPFlowGenerator(FlowGenerator):
         try:
             # 读取config.json文件
             with open('config.json', 'r') as f:
-                config = json.load(f)
+                config = JSON.load(f)
                 self.offset_fix_rate = config.get('offset_fix_rate', 1.0)  # 默认值为1.0
         except:
             self.offset_fix_rate = 1.0
