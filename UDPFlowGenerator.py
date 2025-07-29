@@ -95,7 +95,7 @@ class UDPFlowGenerator(FlowGenerator):
                     return None
                 output = lines[-1]
                 parts = output.split()
-                offset = float(parts[8]) * 1000 * self.offset_fix_rate  # 列索引从0开始
+                offset = float(parts[7]) / 2 * 1000 * self.offset_fix_rate  # 列索引从0开始
                 return offset
             elif sys.platform == 'linux':
                 output = subprocess.check_output(["chronyc", "sources"], text=True)
