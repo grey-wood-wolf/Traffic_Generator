@@ -213,8 +213,8 @@ class UDPFlowGenerator(FlowGenerator):
                             self.total_sent += len(data) + self.pkt_head_size
                             self.total_packets += 1
                             transit = (now_time + self.delay_offset / 1000000 - packet.timestamp / 1000000) * 1000  # 单位ms
-                            if transit < self.total_delay / self.total_packets * 0.5:
-                                transit = self.total_delay / self.total_packets
+                            # if transit < self.total_delay / self.total_packets * 0.5:
+                            #     transit = self.total_delay / self.total_packets
                             self.total_jitters += abs(transit - last_transit)
                             last_transit = transit
                             self.total_delay += transit # 单位ms
